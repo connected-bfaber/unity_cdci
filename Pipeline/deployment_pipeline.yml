@@ -1,0 +1,103 @@
+---
+# resource_types:
+#   - name: ftp
+#     type: docker-image
+#     source:
+#       repository: aequitas/ftp-resource
+
+resources:
+- name: resource-repo
+  type: git
+  source:
+    uri: https://github.com/connected-bfaber/unity_cdci.git
+    branch: master
+- name: resource-s3
+  type: s3
+  source:
+    access_key_id: ((CREDENTIALS_S3_ACCESS_KEY_ID))
+    secret_access_key: ((CREDENTIALS_S3_SECRET_ACCESS_KEY))
+    bucket: unity-cicd
+    regexp: "Unity/(.*).tgz"
+# - name: ftp-upload
+#   type: ftp
+#   source:
+#     regex: (?P<file>archive(?P<version>[0-9\.]+).*\.tar.gz)
+#     uri: ftp://concourse:((FTP_PASS))@192.168.9.88:21/
+# - name: ftpupload
+#   type: ftp
+#   source:
+#     regex: (?P<file>test(?P<version>[0-9\.]+).*\.txt)
+#     uri: ftp://concourse:((FTP_PASS))@192.168.9.88:21/
+
+jobs:
+# - name: testftp
+#   public: true
+#   plan:
+#   - task: touchfile
+#     config:
+#       platform: linux
+#       image_resource:
+#         type: docker-image
+#         source:
+#           repository: gableroux/unity3d
+#           tag: 2017.2.0b11-13-add-new-releases
+#       run:
+#         path: sh
+#         args:
+#         - -exc
+#         - |
+#           touch test/test1.txt
+#       outputs:
+#       - name: test
+#   - put: resource-s3
+#     params:
+#       file: test/test1.txt
+- name: job-build-webgl
+  public: true
+  plan:
+  - get: resource-repo
+    trigger: true
+  - task: build-webgl
+    config:
+      platform: linux
+      image_resource:
+        type: docker-image
+        source:
+          repository: gableroux/unity3d
+          tag: 2017.2.0b11-13-add-new-releases
+      inputs:
+      - name: resource-repo
+      run:
+        path: sh
+        args:
+        - -exc
+        - |
+            echo "Configuring Enviroment"
+            mkdir -p /root/.cache/unity3d
+            mkdir -p /root/.local/share/unity3d/Unity/
+            echo "$UNITY_LICENSE_CONTENT" > /root/.local/share/unity3d/Unity/Unity_lic.ulf
+            echo "Building for $BUILD_TARGET"
+            xvfb-run --server-args="-screen 0 1024x768x24" \
+              /opt/Unity/Editor/Unity \
+              -projectPath $(pwd)/resource-repo \
+              -quit \
+              -batchmode \
+              -buildTarget $BUILD_TARGET \
+              -customBuildTarget $BUILD_TARGET \
+              -customBuildName $BUILD_NAME \
+              -customBuildOptions AcceptExternalModificationsToPlayer \
+              -executeMethod BuildProcess.BuildWebGL \
+              -logFile
+            for folder in $(pwd)/resource-repo/Builds/$BUILD_TARGET/*/; do folder=${folder%*/}; tar -C $(pwd)/resource-repo/Builds/$BUILD_TARGET/${folder##*/} -zcvf outputs/${BUILD_TARGET}_${folder##*/}.tgz .; done
+            # cd resource-repo
+            # xvfb-run --server-args="-screen 0 1024x768x24" /opt/Unity/Editor/Unity -projectPath $(pwd) -quit -batchmode -logFile -executeMethod BuildProcess.BuildWebGL
+      params:
+        UNITY_LICENSE_CONTENT: ((UNITY_LICENSE_CONTENT))
+        BUILD_TARGET: WebGL
+        BUILD_NAME: WebGL
+      outputs:
+      - name: outputs
+  - put: resource-s3
+    params:
+      file: outputs/*.tgz
+      acl: public-read

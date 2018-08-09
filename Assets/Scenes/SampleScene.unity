@@ -294,7 +294,7 @@ TextMesh:
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInternal: {fileID: 0}
   m_GameObject: {fileID: 884340272}
-  m_Text: Made with CI/CD
+  m_Text: Made with CI/CD ^2
   m_OffsetZ: 0
   m_CharacterSize: 1
   m_LineSpacing: 1
